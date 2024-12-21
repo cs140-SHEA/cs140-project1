@@ -102,7 +102,7 @@ def main():
             if prev_cpu_process != cpu_state:
                 prev_cpu_process = cpu_state
 
-        print(cpu_state)
+        # print(cpu_state) # for debugging 
         # Simulate CPU execution
         if cpu_state:
             current_burst = cpu_state["bursts"][0]
@@ -183,7 +183,7 @@ def main():
 
     # Print simulation end
     print("# SIMULATION DONE #")
-    print(done_process)
+    # print(done_process) # for debugging
 
     # total_turnaround_time = 0
     # total_waiting_time = 0
