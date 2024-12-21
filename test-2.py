@@ -1,4 +1,4 @@
-# Multi-level Feedback Queue Scheduler Input Handling
+# Multi-level Feedback Queue Scheduler
 
 def main():
     # Prompt for number of processes
@@ -51,15 +51,12 @@ def main():
     current_time = 0
     cpu_state = None  # Currently running process in CPU
     io_state = []  # List of processes performing I/O
-    finished_process = [] # List of finished processes
+    finished_processes = [] # List of finished processes
     prev_cpu_process = None  # Track the previous process that was running on CPU to avoid context switch if the same
-
-    # Initialize new context switch variable
-    context_switch_counter = 0  # Tracks remaining time for context switch
 
     # Begin time-based simulation
     print("# Scheduling Results #")
-    while processes or Q1 or Q2 or Q3 or cpu_state or io_state or finished_process:
+    while processes or Q1 or Q2 or Q3 or cpu_state or io_state:
         print(f"At Time = {current_time}")
 
         # Check for newly arriving processes
@@ -67,7 +64,7 @@ def main():
         for process in processes[:]:
             if process["arrival_time"] == current_time:
                 process["queue_level"] = "Q1"
-                process["quantum_counter"] = 4 # Initialize quantum counter for Q1
+                process["quantum_counter"] = time_allotment_q1  # Initialize quantum counter for Q1
                 process["allotment_counter"] = time_allotment_q1
                 Q1.append(process)
                 arriving_processes.append(process["name"])
@@ -75,106 +72,55 @@ def main():
         if arriving_processes:
             print(f"Arriving: [{', '.join(arriving_processes)}]")
 
-        # Check for finished processes
-        for process in finished_process[:]:
-            done_process = finished_process.pop(0)
-            print(done_process, " DONE")
-
         # Handle CPU execution
-        if context_switch_counter > 0:
-            # Skip scheduling new processes until context switch is complete
-            context_switch_counter -= 1
-            print(f"Context switching... ({context_switch_counter}ms remaining)")
-            current_time += 1
-            continue
-
-        # If context switch is complete, handle the scheduling
         if not cpu_state:
             if Q1:
                 cpu_state = Q1.pop(0)  # Take process from Q1
                 cpu_state["queue_level"] = "Q1"
-                if prev_cpu_process != cpu_state:  # Context switch logic
-                    context_switch_counter = context_switch_time
-                    print(f"Switching to {cpu_state['name']} (context switch delay: {context_switch_time}ms)")
-                if cpu_state["start_time"] is None:
-                    cpu_state["start_time"] = current_time  # Mark start time
-                prev_cpu_process = cpu_state
             elif Q2:
                 cpu_state = Q2.pop(0)  # Take process from Q2
                 cpu_state["queue_level"] = "Q2"
-                if prev_cpu_process != cpu_state:  # Context switch logic
-                    context_switch_counter = context_switch_time
-                    print(f"Switching to {cpu_state['name']} (context switch delay: {context_switch_time}ms)")
-                prev_cpu_process = cpu_state
             elif Q3:
                 cpu_state = min(Q3, key=lambda p: p["bursts"][0]["duration"])  # Shortest Job First
                 Q3.remove(cpu_state)
                 cpu_state["queue_level"] = "Q3"
-                if prev_cpu_process != cpu_state:  # Context switch logic
-                    context_switch_counter = context_switch_time
-                    print(f"Switching to {cpu_state['name']} (context switch delay: {context_switch_time}ms)")
-                prev_cpu_process = cpu_state
 
-        elif not cpu_state and Q2:
-            cpu_state = Q2.pop(0)  # Take process from Q2
-            cpu_state["queue_level"] = "Q2"
-            if prev_cpu_process != cpu_state:
-                prev_cpu_process = cpu_state
-
-        elif not cpu_state and Q3:
-            cpu_state = min(Q3, key=lambda p: p["bursts"][0]["duration"])  # Shortest Job First
-            Q3.remove(cpu_state)
-            cpu_state["queue_level"] = "Q3"
-            if prev_cpu_process != cpu_state:
-                prev_cpu_process = cpu_state
+            if cpu_state:
+                if prev_cpu_process != cpu_state:
+                    prev_cpu_process = cpu_state
+                if cpu_state["start_time"] is None:
+                    cpu_state["start_time"] = current_time  # Mark start time
 
         # Simulate CPU execution
         if cpu_state:
             current_burst = cpu_state["bursts"][0]
             if current_burst["type"] == "CPU":
                 current_burst["duration"] -= 1
-                cpu_state["quantum_counter"] -= 1  # Decrement the process's quantum counter
+                cpu_state["quantum_counter"] -= 1
                 if cpu_state["queue_level"] == "Q1":
-                    cpu_state["allotment_counter"] -= 1  # Decrement the process's time allotment counter
+                    cpu_state["allotment_counter"] -= 1
 
-                # Check if CPU burst is complete
                 if current_burst["duration"] == 0:
-                    cpu_state["bursts"].pop(0)  # Remove completed burst
+                    cpu_state["bursts"].pop(0)
                     if not cpu_state["bursts"]:  # Process is done
-                        cpu_state["finish_time"] = current_time + 1  # Mark finish time
-                        finished_process.append(cpu_state['name'])
+                        cpu_state["finish_time"] = current_time
+                        finished_processes.append(cpu_state)
                         cpu_state = None
                     else:
                         io_state.append(cpu_state)
                         cpu_state = None
-
-                # Handle quantum expiration and promote/demote logic
-                elif cpu_state["queue_level"] == "Q1":
-                    if cpu_state["allotment_counter"] == 0:
-                        print(f"{cpu_state['name']} DEMOTED")
-                        cpu_state["queue_level"] = "Q2"
-                        cpu_state["quantum_counter"] = time_allotment_q2  # Initialize quantum counter for Q2
-                        Q2.append(cpu_state)
-                        cpu_state = None
-                    elif cpu_state["quantum_counter"] == 0:
-                        Q1.append(cpu_state)
-                        cpu_state = None
-
+                elif cpu_state["queue_level"] == "Q1" and cpu_state["allotment_counter"] == 0:
+                    cpu_state["queue_level"] = "Q2"
+                    cpu_state["quantum_counter"] = time_allotment_q2
+                    Q2.append(cpu_state)
+                    cpu_state = None
+                elif cpu_state["queue_level"] == "Q1" and cpu_state["quantum_counter"] == 0:
+                    Q1.append(cpu_state)
+                    cpu_state = None
                 elif cpu_state["queue_level"] == "Q2" and cpu_state["quantum_counter"] == 0:
                     cpu_state["queue_level"] = "Q3"
                     Q3.append(cpu_state)
                     cpu_state = None
-
-                # elif cpu_state["quantum_counter"] == 0:
-                #     print(f"{cpu_state['name']} DEMOTED")
-                #     if cpu_state["queue_level"] == "Q1":
-                #         cpu_state["queue_level"] = "Q2"
-                #         cpu_state["quantum_counter"] = time_allotment_q2 # Initialize quantum counter for Q2
-                #         Q2.append(cpu_state)
-                #     elif cpu_state["queue_level"] == "Q2":
-                #         cpu_state["queue_level"] = "Q3"
-                #         Q3.append(cpu_state)
-                #     cpu_state = None
 
         # Simulate I/O
         for io_process in io_state[:]:
@@ -184,52 +130,44 @@ def main():
                 if current_burst["duration"] == 0:
                     io_process["bursts"].pop(0)
                     if not io_process["bursts"]:  # Process is done
-                        print(f"At Time = {current_time}")
-                        finished_process.append(io_process['name'])
+                        finished_processes.append(io_process)
                     else:
                         if io_process["queue_level"] == "Q1":
-                            io_process["quantum_counter"] = time_allotment_q1  # Reset quantum counter for Q1
+                            io_process["quantum_counter"] = time_allotment_q1
                             Q1.append(io_process)
                         elif io_process["queue_level"] == "Q2":
-                            io_process["quantum_counter"] = time_allotment_q2  # Reset quantum counter for Q2
+                            io_process["quantum_counter"] = time_allotment_q2
                             Q2.append(io_process)
                         else:
                             Q3.append(io_process)
                     io_state.remove(io_process)
 
         # Print state
-        print(f"Queues: [{', '.join(p['name'] for p in Q1)}]; [{', '.join(p['name'] for p in Q2)}]; [{', '.join(p['name'] for p in Q3)}]")
-        if cpu_state:
-            print(f"CPU: {cpu_state['name']}") 
-        else:
-            print("CPU: []")
+        print(f"Queues: [{', '.join(p['name'] for p in Q1)}], [{', '.join(p['name'] for p in Q2)}], [{', '.join(p['name'] for p in Q3)}]")
+        print(f"CPU: {cpu_state['name'] if cpu_state else '[]'}")
         print(f"I/O: [{', '.join(p['name'] for p in io_state)}]")
         print()
 
         # Increment time
         current_time += 1
 
-    # Print simulation end
+    # Print simulation results
     print("# SIMULATION DONE #")
+    total_turnaround_time = 0
+    total_waiting_time = 0
+    for process in finished_processes:
+        turn_around_time = process["finish_time"] - process["arrival_time"]
+        waiting_time = turn_around_time - sum(burst["duration"] for burst in process["bursts"])
 
-    # total_turnaround_time = 0
-    # total_waiting_time = 0
-    # for process in processes + Q1 + Q2 + Q3:
-    #     turn_around_time = process["finish_time"] - process["arrival_time"]
-    #     waiting_time = turn_around_time - sum(burst["duration"] for burst in process["bursts"])
+        print(f"Turn-around time for {process['name']}: {turn_around_time} ms")
+        print(f"Waiting time for {process['name']}: {waiting_time} ms")
+        total_turnaround_time += turn_around_time
+        total_waiting_time += waiting_time
 
-    #     print(f"Turn-around time for {process['name']} : {process['finish_time']} - {process['arrival_time']} = {turn_around_time} ms")
-    #     print(f"Waiting time for {process['name']} : {waiting_time} ms")
-    #     total_turnaround_time += turn_around_time
-    #     total_waiting_time += waiting_time
-
-    # avg_turnaround_time = total_turnaround_time / num_processes
-    # avg_waiting_time = total_waiting_time / num_processes
-    # print(f"Average Turn-around time = {avg_turnaround_time:.2f} ms")
-    # print(f"Average Waiting time = {avg_waiting_time:.2f} ms")
-
-    # Print simulation end
-    print("\n# Simulation Complete #")
+    avg_turnaround_time = total_turnaround_time / num_processes
+    avg_waiting_time = total_waiting_time / num_processes
+    print(f"Average Turn-around time = {avg_turnaround_time:.2f} ms")
+    print(f"Average Waiting time = {avg_waiting_time:.2f} ms")
 
 if __name__ == "__main__":
     main()
