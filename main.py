@@ -146,8 +146,11 @@ def main():
                 if current_burst["duration"] == 0:
                     io_process["bursts"].pop(0)
                     if not io_process["bursts"]:  # Process is done
-                        print(f"At Time = {current_time}")
-                        print(f"{io_process['name']} DONE\n")
+                        # TODO: handle printing at next time step
+                        finished_processes.append(io_process['name'])
+                        io_process["finish_time"] = current_time + 1  # Mark finish time
+                        # print(f"At Time = {current_time}")
+                        # print(f"{io_process['name']} DONE\n")
                     else:
                         io_process["queue_level"] = "Q1"
                         Q1.append(io_process)
@@ -157,10 +160,12 @@ def main():
         print(f"Queues: [{', '.join(p['name'] for p in Q1)}]; [{', '.join(p['name'] for p in Q2)}]; [{', '.join(p['name'] for p in Q3)}]")
         if cpu_state:
             print(f"CPU: {cpu_state['name']}") 
-            #print(f"{cpu_state['queue_level']})") # for debugging
+            # print(f"{cpu_state['queue_level']})") # for debugging
         else:
             print("CPU: []")
-        print(f"I/O: [{', '.join(p['name'] for p in io_state)}]")
+            # print(f"{cpu_state}") # for debugging
+        if io_state:
+            print(f"I/O: [{', '.join(p['name'] for p in io_state)}]")
         print()
 
         # Increment time
