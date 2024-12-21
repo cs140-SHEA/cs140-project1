@@ -35,6 +35,7 @@ def main():
             "arrival_time": int(process_data[1]),
             "bursts": structured_bursts,
             "queue_level": None,  # Track which queue the process is in
+            "quantum_counter": 0, # Track remaining quantum time for Q1
             "start_time": None,   # Track the start time of the process
             "finish_time": None,  # Track the finish time of the process
             "waiting_time": 0     # Track the total waiting time for the process
@@ -49,7 +50,6 @@ def main():
     current_time = 0
     cpu_state = None  # Currently running process in CPU
     io_state = []  # List of processes performing I/O
-    quantum_remaining = 0  # Quantum timer for Q1
     prev_cpu_process = None  # Track the previous process that was running on CPU to avoid context switch if the same
 
     # Begin time-based simulation
@@ -61,6 +61,7 @@ def main():
         for process in processes[:]:
             if process["arrival_time"] == current_time:
                 process["queue_level"] = "Q1"
+                process["quantum_counter"] = time_allotment_q1  # Initialize quantum counter for Q1
                 Q1.append(process)
                 arriving_processes.append(process["name"])
                 processes.remove(process)
@@ -72,34 +73,22 @@ def main():
         if not cpu_state and Q1:
             cpu_state = Q1.pop(0)  # Take process from Q1
             cpu_state["queue_level"] = "Q1"
-            quantum_remaining = time_allotment_q1
+            if prev_cpu_process != cpu_state:
+                prev_cpu_process = cpu_state
             if cpu_state["start_time"] is None:
                 cpu_state["start_time"] = current_time  # Mark start time
-            # No context switch if the same process runs next
-            if prev_cpu_process == cpu_state:
-                prev_cpu_process = None  # No context switch
-            else:
-                prev_cpu_process = cpu_state
+            
         elif not cpu_state and Q2:
             cpu_state = Q2.pop(0)  # Take process from Q2
             cpu_state["queue_level"] = "Q2"
-            if cpu_state["start_time"] is None:
-                cpu_state["start_time"] = current_time  # Mark start time
-            # No context switch if the same process runs next
-            if prev_cpu_process == cpu_state:
-                prev_cpu_process = None  # No context switch
-            else:
+            if prev_cpu_process != cpu_state:
                 prev_cpu_process = cpu_state
+
         elif not cpu_state and Q3:
             cpu_state = min(Q3, key=lambda p: p["bursts"][0]["duration"])  # Shortest Job First
             Q3.remove(cpu_state)
             cpu_state["queue_level"] = "Q3"
-            if cpu_state["start_time"] is None:
-                cpu_state["start_time"] = current_time  # Mark start time
-            # No context switch if the same process runs next
-            if prev_cpu_process == cpu_state:
-                prev_cpu_process = None  # No context switch
-            else:
+            if prev_cpu_process != cpu_state:
                 prev_cpu_process = cpu_state
 
         # Simulate CPU execution
@@ -107,7 +96,7 @@ def main():
             current_burst = cpu_state["bursts"][0]
             if current_burst["type"] == "CPU":
                 current_burst["duration"] -= 1
-                quantum_remaining -= 1
+                cpu_state["quantum_counter"] -= 1  # Decrement the process's quantum counter
 
                 # Check if CPU burst is complete
                 if current_burst["duration"] == 0:
@@ -121,10 +110,15 @@ def main():
                         cpu_state = None
 
                 # Check if quantum expires
-                elif quantum_remaining == 0:
+                elif cpu_state["quantum_counter"] == 0:
                     print(f"{cpu_state['name']} DEMOTED")
-                    cpu_state["queue_level"] = "Q2"
-                    Q2.append(cpu_state)
+                    if cpu_state["queue_level"] == "Q1":
+                        cpu_state["queue_level"] = "Q2"
+                        cpu_state["quantum_counter"] = time_allotment_q2 # Initialize quantum counter for Q2
+                        Q2.append(cpu_state)
+                    elif cpu_state["queue_level"] == "Q2":
+                        cpu_state["queue_level"] = "Q3"
+                        Q3.append(cpu_state)
                     cpu_state = None
 
         # Simulate I/O
@@ -138,8 +132,14 @@ def main():
                         print(f"At Time = {current_time}")
                         print(f"{io_process['name']} DONE\n")
                     else:
-                        io_process["queue_level"] = "Q1"
-                        Q1.append(io_process)
+                        if io_process["queue_level"] == "Q1":
+                            io_process["quantum_counter"] = time_allotment_q1  # Reset quantum counter for Q1
+                            Q1.append(io_process)
+                        elif io_process["queue_level"] == "Q2":
+                            io_process["quantum_counter"] = time_allotment_q2  # Reset quantum counter for Q2
+                            Q2.append(io_process)
+                        else:
+                            Q3.append(io_process)
                     io_state.remove(io_process)
 
         # Print state
@@ -158,21 +158,21 @@ def main():
     # Print simulation end
     print("# SIMULATION DONE #")
 
-    total_turnaround_time = 0
-    total_waiting_time = 0
-    for process in processes + Q1 + Q2 + Q3:
-        turn_around_time = process["finish_time"] - process["arrival_time"]
-        waiting_time = turn_around_time - sum(burst["duration"] for burst in process["bursts"])
+    # total_turnaround_time = 0
+    # total_waiting_time = 0
+    # for process in processes + Q1 + Q2 + Q3:
+    #     turn_around_time = process["finish_time"] - process["arrival_time"]
+    #     waiting_time = turn_around_time - sum(burst["duration"] for burst in process["bursts"])
 
-        print(f"Turn-around time for {process['name']} : {process['finish_time']} - {process['arrival_time']} = {turn_around_time} ms")
-        print(f"Waiting time for {process['name']} : {waiting_time} ms")
-        total_turnaround_time += turn_around_time
-        total_waiting_time += waiting_time
+    #     print(f"Turn-around time for {process['name']} : {process['finish_time']} - {process['arrival_time']} = {turn_around_time} ms")
+    #     print(f"Waiting time for {process['name']} : {waiting_time} ms")
+    #     total_turnaround_time += turn_around_time
+    #     total_waiting_time += waiting_time
 
-    avg_turnaround_time = total_turnaround_time / num_processes
-    avg_waiting_time = total_waiting_time / num_processes
-    print(f"Average Turn-around time = {avg_turnaround_time:.2f} ms")
-    print(f"Average Waiting time = {avg_waiting_time:.2f} ms")
+    # avg_turnaround_time = total_turnaround_time / num_processes
+    # avg_waiting_time = total_waiting_time / num_processes
+    # print(f"Average Turn-around time = {avg_turnaround_time:.2f} ms")
+    # print(f"Average Waiting time = {avg_waiting_time:.2f} ms")
 
     # Print simulation end
     print("\n# Simulation Complete #")
