@@ -52,12 +52,20 @@ def main():
     quantum_remaining = 0  # Quantum timer for Q1
     prev_cpu_process = None  # Track the previous process that was running on CPU to avoid context switch if the same
 
+    # Additional trackers
+    finished_processes = [] # List of recently finished process
+    arriving_processes = []
+
     # Begin time-based simulation
     print("# Scheduling Results #")
     while processes or Q1 or Q2 or Q3 or cpu_state or io_state:
         print(f"At Time = {current_time}")
+        if finished_processes:
+            # TODO: Check if needed alphabetical if multiple processes end at the same time
+            print(f"{', '.join(finished_processes)} DONE")
+            finished_processes.clear()
         # Check for newly arriving processes
-        arriving_processes = []
+        arriving_processes.clear()
         for process in processes[:]:
             if process["arrival_time"] == current_time:
                 process["queue_level"] = "Q1"
@@ -114,7 +122,10 @@ def main():
                     cpu_state["bursts"].pop(0)  # Remove completed burst
                     if not cpu_state["bursts"]:  # Process is done
                         cpu_state["finish_time"] = current_time + 1  # Mark finish time
-                        print(f"{cpu_state['name']} DONE")
+                        # TODO (DONE): print this in the next time step
+                        finished_processes.append(cpu_state['name'])
+                        # moved to the next time step
+                        # print(f"{cpu_state['name']} DONE")
                         cpu_state = None
                     else:
                         io_state.append(cpu_state)
