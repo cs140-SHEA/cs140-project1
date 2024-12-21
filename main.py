@@ -51,12 +51,14 @@ def main():
     current_time = 0
     cpu_state = None  # Currently running process in CPU
     io_state = []  # List of processes performing I/O
+    finished_process = [] # List of finished processes
     prev_cpu_process = None  # Track the previous process that was running on CPU to avoid context switch if the same
 
     # Begin time-based simulation
     print("# Scheduling Results #")
-    while processes or Q1 or Q2 or Q3 or cpu_state or io_state:
+    while processes or Q1 or Q2 or Q3 or cpu_state or io_state or finished_process:
         print(f"At Time = {current_time}")
+
         # Check for newly arriving processes
         arriving_processes = []
         for process in processes[:]:
@@ -67,9 +69,13 @@ def main():
                 Q1.append(process)
                 arriving_processes.append(process["name"])
                 processes.remove(process)
-
         if arriving_processes:
             print(f"Arriving: [{', '.join(arriving_processes)}]")
+
+        # Check for finished processes
+        for process in finished_process[:]:
+            done_process = finished_process.pop(0)
+            print(done_process, " DONE")
 
         # Handle CPU execution
         if not cpu_state and Q1:
@@ -107,7 +113,7 @@ def main():
                     cpu_state["bursts"].pop(0)  # Remove completed burst
                     if not cpu_state["bursts"]:  # Process is done
                         cpu_state["finish_time"] = current_time + 1  # Mark finish time
-                        print(f"{cpu_state['name']} DONE")
+                        finished_process.append(cpu_state['name'])
                         cpu_state = None
                     else:
                         io_state.append(cpu_state)
@@ -152,7 +158,7 @@ def main():
                     io_process["bursts"].pop(0)
                     if not io_process["bursts"]:  # Process is done
                         print(f"At Time = {current_time}")
-                        print(f"{io_process['name']} DONE\n")
+                        finished_process.append(io_process['name'])
                     else:
                         if io_process["queue_level"] == "Q1":
                             io_process["quantum_counter"] = time_allotment_q1  # Reset quantum counter for Q1
