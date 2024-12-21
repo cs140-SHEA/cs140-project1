@@ -35,7 +35,7 @@ def main():
             "arrival_time": int(process_data[1]),
             "bursts": structured_bursts,
             "queue_level": None,  # Track which queue the process is in
-            "quantum_counter": 0, # Track remaining quantum time for Q1 / remaining allotment time for Q2
+            "quantum_counter": 0, # Track remaining quantum time for Q1 RR
             "allotment_counter": 0, # Track remaining allotment time for Q1
             "start_time": None,   # Track the start time of the process
             "finish_time": None,  # Track the finish time of the process
@@ -51,7 +51,9 @@ def main():
     current_time = 0
     cpu_state = None  # Currently running process in CPU
     io_state = []  # List of processes performing I/O
-    finished_process = [] # List of finished processes
+    finished_process = [] # List of recently finished processes
+    done_process = [] # List of already done processes
+    demoted_process = [] # List of demoted processes
     prev_cpu_process = None  # Track the previous process that was running on CPU to avoid context switch if the same
 
     # Begin time-based simulation
@@ -73,14 +75,17 @@ def main():
             print(f"Arriving: [{', '.join(arriving_processes)}]")
 
         # Check for finished processes
-        for process in finished_process[:]:
-            done_process = finished_process.pop(0)
-            print(done_process, " DONE")
+        for _ in finished_process[:]:
+            process = finished_process.pop(0)
+            print(process, " DONE")
+
+        for _ in demoted_process[:]:
+            process = demoted_process.pop(0)
+            print(process, " DEMOTED")
 
         # Handle CPU execution
         if not cpu_state and Q1:
             cpu_state = Q1.pop(0)  # Take process from Q1
-            cpu_state["queue_level"] = "Q1"
             if prev_cpu_process != cpu_state:
                 prev_cpu_process = cpu_state
             if cpu_state["start_time"] is None:
@@ -88,25 +93,24 @@ def main():
             
         elif not cpu_state and Q2:
             cpu_state = Q2.pop(0)  # Take process from Q2
-            cpu_state["queue_level"] = "Q2"
             if prev_cpu_process != cpu_state:
                 prev_cpu_process = cpu_state
 
         elif not cpu_state and Q3:
             cpu_state = min(Q3, key=lambda p: p["bursts"][0]["duration"])  # Shortest Job First
             Q3.remove(cpu_state)
-            cpu_state["queue_level"] = "Q3"
             if prev_cpu_process != cpu_state:
                 prev_cpu_process = cpu_state
 
+        # print(cpu_state) # for debugging 
         # Simulate CPU execution
         if cpu_state:
             current_burst = cpu_state["bursts"][0]
             if current_burst["type"] == "CPU":
                 current_burst["duration"] -= 1 
-                cpu_state["quantum_counter"] -= 1  # Decrement the process's quantum counter
+                cpu_state["allotment_counter"] -= 1  # Decrement the process's allotment counter
                 if cpu_state["queue_level"] == "Q1":
-                    cpu_state["allotment_counter"] -= 1 # Decrement the process's time allotment counter
+                    cpu_state["quantum_counter"] -= 1 # Decrement the process's Q1 RR quantum counter
 
                 # Check if CPU burst is complete
                 if current_burst["duration"] == 0:
@@ -114,6 +118,7 @@ def main():
                     if not cpu_state["bursts"]:  # Process is done
                         cpu_state["finish_time"] = current_time + 1  # Mark finish time
                         finished_process.append(cpu_state['name'])
+                        done_process.append(cpu_state)
                         cpu_state = None
                     else:
                         io_state.append(cpu_state)
@@ -122,32 +127,24 @@ def main():
                 # Check if quantum expires
                 elif cpu_state["queue_level"] == "Q1":
                     if cpu_state["allotment_counter"] == 0:
-                        print(f"{cpu_state['name']} DEMOTED")
+                        demoted_process.append(cpu_state['name'])
                         cpu_state["queue_level"] = "Q2"
-                        cpu_state["quantum_counter"] = time_allotment_q2 # Initialize quantum counter for Q2
+                        cpu_state["allotment_counter"] = time_allotment_q2 # Initialize quantum counter for Q2
                         Q2.append(cpu_state)
                         cpu_state = None
                     elif cpu_state["quantum_counter"] == 0:
+                        # reset quantum_counter
+                        cpu_state["quantum_counter"] = 4
                         # go to next ready process
                         Q1.append(cpu_state)
                         cpu_state = None
-                    # cpu_state = None
 
-                elif cpu_state["queue_level"] == "Q2" and cpu_state["quantum_counter"] == 0:
+
+                elif cpu_state["queue_level"] == "Q2" and cpu_state["allotment_counter"] == 0:
+                    demoted_process.append(cpu_state['name'])
                     cpu_state["queue_level"] == "Q3"
                     Q3.append(cpu_state)
                     cpu_state = None
-
-                # elif cpu_state["quantum_counter"] == 0:
-                #     print(f"{cpu_state['name']} DEMOTED")
-                #     if cpu_state["queue_level"] == "Q1":
-                #         cpu_state["queue_level"] = "Q2"
-                #         cpu_state["quantum_counter"] = time_allotment_q2 # Initialize quantum counter for Q2
-                #         Q2.append(cpu_state)
-                #     elif cpu_state["queue_level"] == "Q2":
-                #         cpu_state["queue_level"] = "Q3"
-                #         Q3.append(cpu_state)
-                #     cpu_state = None
 
         # Simulate I/O
         for io_process in io_state[:]:
@@ -159,12 +156,13 @@ def main():
                     if not io_process["bursts"]:  # Process is done
                         print(f"At Time = {current_time}")
                         finished_process.append(io_process['name'])
+                        done_process.append(io_process)
                     else:
                         if io_process["queue_level"] == "Q1":
-                            io_process["quantum_counter"] = time_allotment_q1  # Reset quantum counter for Q1
+                            io_process["allotment_counter"] = time_allotment_q1  # Reset quantum counter for Q1
                             Q1.append(io_process)
                         elif io_process["queue_level"] == "Q2":
-                            io_process["quantum_counter"] = time_allotment_q2  # Reset quantum counter for Q2
+                            io_process["allotment_counter"] = time_allotment_q2  # Reset quantum counter for Q2
                             Q2.append(io_process)
                         else:
                             Q3.append(io_process)
@@ -174,7 +172,7 @@ def main():
         print(f"Queues: [{', '.join(p['name'] for p in Q1)}]; [{', '.join(p['name'] for p in Q2)}]; [{', '.join(p['name'] for p in Q3)}]")
         if cpu_state:
             print(f"CPU: {cpu_state['name']}") 
-            #print(f"{cpu_state['queue_level']})") # for debugging
+            print(f"{cpu_state['queue_level']}") # for debugging
         else:
             print("CPU: []")
         print(f"I/O: [{', '.join(p['name'] for p in io_state)}]")
@@ -185,6 +183,7 @@ def main():
 
     # Print simulation end
     print("# SIMULATION DONE #")
+    # print(done_process) # for debugging
 
     # total_turnaround_time = 0
     # total_waiting_time = 0
